@@ -11,10 +11,10 @@ import hashlib
 import time
 import numpy as np
 from timeit import default_timer
-# python train.py -b VTN -n 5 -d "datasets/liver.json" -g "-1"
+
 parser = argparse.ArgumentParser()
-parser.add_argument('-b', '--base_network', type=str, default='MultiRegNet',
-                    help='Specifies the base network (either VTN or VoxelMorph or MultiRegNet)')
+parser.add_argument('-b', '--base_network', type=str, default='CPRNet',
+                    help='Specifies the base network')
 parser.add_argument('-n', '--n_cascades', type=int, default=1,
                     help='Number of cascades')
 parser.add_argument('-r', '--rep', type=int, default=1,
@@ -87,7 +87,7 @@ def main():
 
     config = tf.ConfigProto(allow_soft_placement=True)
     config.gpu_options.per_process_gpu_memory_fraction = 0.95
-    # config.gpu_options.allow_growth = True
+    config.gpu_options.allow_growth = True
 
     with tf.Session(config=config) as sess:
         saver = tf.train.Saver(tf.get_collection(
@@ -164,12 +164,9 @@ def main():
 
         if args.finetune is not None:
             learningRates = [1e-5 / 2, 1e-5 / 2, 1e-5 / 2, 1e-5 / 4, 1e-5 / 8]
-            #args.epochs = 1
         else:
             learningRates = [1e-4, 1e-4, 1e-4, 1e-4 / 2, 1e-4 / 4,
                                1e-4 / 8, 1e-4 / 16, 1e-4 / 32, 1e-4 / 64]
-
-            # Training
 
         def get_lr(steps):
             m = args.lr / learningRates[0]
@@ -193,17 +190,11 @@ def main():
                                set_tf_keys(fd, learningRate=lr))
 
             losses = []
-            # bootstrap_losses = []
 
             for v in tf.Summary().FromString(summ).value:
                 if v.tag == 'loss':
                     loss = v.simple_value
                     losses.append(loss)
-                # elif v.tag == 'bootstrap_loss':
-                #     bootstrap_loss = v.simple_value
-                #     # bootstrap_loss.append(bootstrap_loss)
-            
-            
 
             steps += 1
             if args.debug or steps % 10 == 0:

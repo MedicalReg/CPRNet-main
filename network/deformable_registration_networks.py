@@ -102,8 +102,6 @@ class DeformableRegistrationNetworks(Network):
             if params['raw_weight'] > 0:
                 stem_result['raw_loss'] = self.similarity_loss(
                     img1, stem_result['warped'])
-                # stem_result['anatomy_loss'] = self.anatomy_loss(
-                #     img1, stem_result['warped'])
             if params['reg_weight'] > 0:
                 stem_result['reg_loss'] = self.regularize_loss(
                     stem_result['flow_5']) * self.reg_factor
