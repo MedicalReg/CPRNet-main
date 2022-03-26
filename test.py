@@ -14,7 +14,7 @@ import tflearn
 import network
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-c', '--checkpoint', type=str, default='./weights/Jul29-2302/model-99500',
+parser.add_argument('-c', '--checkpoint', type=str, default=None,
                     help='Specifies a previous checkpoint to load')
 parser.add_argument('-f', '--fixed', type=str, default=None,
                     help='Specifies the fixed image')
