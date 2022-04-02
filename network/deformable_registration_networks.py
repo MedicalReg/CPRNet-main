@@ -246,7 +246,7 @@ class DeformableRegistrationNetworks(Network):
         raw_loss = tf.reduce_mean(tf.square(flatten1 - flatten2), axis=-1)
         return raw_loss
 
-    def Get_Ja_New(self, flow):
+    def Get_Ja(self, flow):
         grid = self.grid(flow)
         flow = flow + grid
         D_y = (flow[:, 1:, :-1, :-1, :] - flow[:, :-1, :-1, :-1, :])
@@ -265,7 +265,7 @@ class DeformableRegistrationNetworks(Network):
         return ret
 
     def flow_regularizer(self, flow):
-        J = self.Get_Ja_New(flow)
+        J = self.Get_Ja(flow)
         J = tf.pad(J,((0,0),(0,1),(0,1),(0,1)),'constant',constant_values = 1)
         J = tf.expand_dims(J, -1)
         N = tf.cast(J <= 0.0, tf.float32)
@@ -297,157 +297,3 @@ class DeformableRegistrationNetworks(Network):
             tf.constant([0, 0, 1], dtype=tf.float32)
         ], axis=-1)), axes=[1, 2, 3])
         return tf.sqrt(var)
-
-    def Gaussian_Filter(self, kernel_size=3, sigma=1.2):  # Default: Filter_shape = [5,5]
-        # 	--> Reference: https://en.wikipedia.org/wiki/Canny_edge_detector#Gaussian_filter
-        k = (kernel_size - 1) // 2
-        filter = []
-        sigma_2 = sigma ** 2
-        for i in range(kernel_size):
-            filter_row = []
-            for j in range(kernel_size):
-                Hij = np.exp(-((i + 1 - (k + 1)) ** 2 + (j + 1 - (k + 1)) ** 2) / (2 * sigma_2)) / (2 * np.pi * sigma_2)
-                filter_row.append(Hij)
-            filter.append(filter_row)
-        return np.asarray(filter).reshape(1, kernel_size, kernel_size, 1, 1)
-
-    def Border_Padding(self, x, pad_width):
-        for _ in range(pad_width): x = tf.pad(x, self.border_paddings, 'SYMMETRIC')
-        return x
-
-    def FourAngles(self, d):
-        d0 = tf.to_float(tf.greater_equal(d, 157.5)) + tf.to_float(tf.less(d, 22.5))
-        d45 = tf.to_float(tf.greater_equal(d, 22.5)) * tf.to_float(tf.less(d, 67.5))
-        d90 = tf.to_float(tf.greater_equal(d, 67.5)) * tf.to_float(tf.less(d, 112.5))
-        d135 = tf.to_float(tf.greater_equal(d, 112.5)) * tf.to_float(tf.less(d, 157.5))
-        return (d0, d45, d90, d135)
-
-    def TF_Canny(self, img_tensor, minRate=0.10, maxRate=0.40):
-        """ STEP-0 (Preprocessing):
-            1. Scale the tensor values to the expected range ([0,1])
-            2. If 'preserve_size': As TensorFlow will pad by 0s for padding='SAME',
-                                it is better to pad by the same values of the borders.
-                                (This is to avoid considering the borders as edges)
-        """
-        img_tensor = (img_tensor / tf.reduce_max(img_tensor)) * self.MAX
-        img_tensor = self.Border_Padding(img_tensor, (self.GAUS_KERNEL - 1) // 2)
-
-        """ STEP-1: Noise reduction with Gaussian filter """
-        x_gaussian = tf.nn.convolution(img_tensor, self.gaussian_filter, padding='VALID')
-        ### Below is a heuristic to remove the intensity gradient inside a cloud ###
-        x_gaussian = tf.clip_by_value(x_gaussian, 0, self.MAX / 2)
-
-        """ STEP-2: Calculation of Horizontal and Vertical derivatives  with Sobel operator 
-            --> Reference: https://en.wikipedia.org/wiki/Sobel_operator	
-        """
-        x_gaussian = self.Border_Padding(x_gaussian, 1)
-        Gx = tf.nn.convolution(x_gaussian, self.h_filter, padding='VALID')
-        Gy = tf.nn.convolution(x_gaussian, self.v_filter, padding='VALID')
-        G = tf.sqrt(tf.square(Gx) + tf.square(Gy))
-        BIG_PHI = tf.atan2(Gy, Gx)
-        BIG_PHI = (BIG_PHI * 180 / np.pi) % 180  ### Convert from Radian to Degree
-        D_0, D_45, D_90, D_135 = self.FourAngles(
-            BIG_PHI)  ### Round the directions to 0, 45, 90, 135 (only take the masks)
-
-        """ STEP-3: NON-Maximum Suppression
-            --> Reference: https://stackoverflow.com/questions/46553662/conditional-value-on-tensor-relative-to-element-neighbors
-        """
-
-        """ 3.1-Selecting Edge-Pixels on the Horizontal direction """
-        targetPixels_0 = tf.nn.convolution(G, self.filter_0, padding='SAME')
-        isGreater_0 = tf.to_float(tf.greater(G * D_0, targetPixels_0))
-        isMax_0 = isGreater_0[:, :, :, :, 0:1] * isGreater_0[:, :, :, :, 1:2]
-        ### Note: Need to keep 4 dimensions (index [:,:,:,0] is 3 dimensions) ###
-
-        """ 3.2-Selecting Edge-Pixels on the Vertical direction """
-        targetPixels_90 = tf.nn.convolution(G, self.filter_90, padding='SAME')
-        isGreater_90 = tf.to_float(tf.greater(G * D_90, targetPixels_90))
-        isMax_90 = isGreater_90[:, :, :, :, 0:1] * isGreater_90[:, :, :, :, 1:2]
-
-        """ 3.3-Selecting Edge-Pixels on the Diag-45 direction """
-        targetPixels_45 = tf.nn.convolution(G, self.filter_45, padding='SAME')
-        isGreater_45 = tf.to_float(tf.greater(G * D_45, targetPixels_45))
-        isMax_45 = isGreater_45[:, :, :, :, 0:1] * isGreater_45[:, :, :, :, 1:2]
-
-        """ 3.4-Selecting Edge-Pixels on the Diag-135 direction """
-        targetPixels_135 = tf.nn.convolution(G, self.filter_135, padding='SAME')
-        isGreater_135 = tf.to_float(tf.greater(G * D_135, targetPixels_135))
-        isMax_135 = isGreater_135[:, :, :, :, 0:1] * isGreater_135[:, :, :, :, 1:2]
-
-        """ 3.5-Merging Edges on Horizontal-Vertical and Diagonal directions """
-        edges_raw = G * (isMax_0 + isMax_90 + isMax_45 + isMax_135)
-        edges_raw = tf.clip_by_value(edges_raw, 0, self.MAX)
-
-        ### If only the raw edges are needed ###
-        return edges_raw
-
-    def anatomy_loss(self, img1, img2):
-        # size = img1.shape.as_list()
-        edges_tensor1 = self.TF_Canny(img1)
-        edges_tensor2 = self.TF_Canny(img2)
-        maps = tf.nn.convolution(tf.to_float(tf.greater(edges_tensor1, 0.1)), self.filter_edge, padding='SAME')
-        maps = maps * tf.to_float(tf.greater(edges_tensor2, 0.1))
-        score = tf.reduce_sum(maps) / tf.reduce_sum(tf.to_float(tf.greater(edges_tensor2, 0.1)))
-
-        anatomy_loss = tf.exp(-score / 3)
-        return anatomy_loss
-        
-    def kernel3d(self, mm, sigma):
-        """Return (mm, mm, mm) shaped, normalized kernel."""
-        g1 = scipy.signal.gaussian(mm, std=sigma)
-        g3 = g1.reshape(mm, 1, 1) * g1.reshape(1, mm, 1) * g1.reshape(1, 1, mm)
-        return g3 * (1 / g3.sum())
-
-    def ncc(self, I, J, win=None):
-        # get dimension of volume
-        # assumes I, J are sized [batch_size, *vol_shape, nb_feats]
-        ndims = len(I.get_shape().as_list()) - 2
-        assert ndims in [1, 2, 3], "volumes should be 1 to 3 dimensions. found: %d" % ndims
-
-        # set window size
-        if win is None:
-            win = [9] * ndims
-
-        # get convolution function
-        conv_fn = getattr(tf.nn, 'conv%dd' % ndims)
-
-        # compute CC squares
-        I2 = I * I
-        J2 = J * J
-        IJ = I * J
-
-        # compute filters
-        in_ch = J.get_shape().as_list()[-1]
-        sum_filt = tf.ones([*win, 1, 1])
-        strides = 1
-        if ndims > 1:
-            strides = [1] * (ndims + 2)
-
-        # compute local sums via convolution
-        padding = 'SAME'
-        I_sum = conv_fn(I, sum_filt, strides, padding)
-        J_sum = conv_fn(J, sum_filt, strides, padding)
-        I2_sum = conv_fn(I2, sum_filt, strides, padding)
-        J2_sum = conv_fn(J2, sum_filt, strides, padding)
-        IJ_sum = conv_fn(IJ, sum_filt, strides, padding)
-
-        # compute cross correlation
-        win_size = np.prod(win) * 1
-        u_I = I_sum / win_size
-        u_J = J_sum / win_size
-
-        cross = IJ_sum - u_J * I_sum - u_I * J_sum + u_I * u_J * win_size  # TODO: simplify this
-        I_var = I2_sum - 2 * u_I * I_sum + u_I * u_I * win_size
-        J_var = J2_sum - 2 * u_J * J_sum + u_J * u_J * win_size
-
-        cc = cross * cross / (I_var * J_var + 1e-5)
-
-        # return mean cc for each entry in batch
-        return 1 - tf.reduce_mean(cc)
-
-
-
-
-
-
-

@@ -32,18 +32,6 @@ args = parser.parse_args(args=[])
 
 os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-
-def RenderFlow(flow, coef=5, channel=(0, 1, 2), thresh=1):
-    #flow = flow[:, :, 64]
-    im_flow = np.stack([flow[:, :, c] for c in channel], axis=-1)
-    # im_flow = 0.5 + im_flow / coef
-    im_flow = np.abs(im_flow)
-    im_flow = np.exp(-im_flow / coef)
-    im_flow = im_flow * thresh
-    # im_flow = 1 - im_flow / 20
-    return im_flow
-
-
 def test(fixed_image, moving_image, framework):
 
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
@@ -88,30 +76,6 @@ def find_checkpoint_step(checkpoint_path, target_steps=None):
             checkpoints.append((-steps if target_steps is None else abs(
                 target_steps - steps), os.path.join(checkpoint_path, f.replace('.index', ''))))
     return min(checkpoints, key=lambda x: x[0])[1]
-
-
-def RenderFlow(flow, coef=5, channel=(0, 1, 2), thresh=1):
-    #flow = flow[:, :, 64]
-    im_flow = np.stack([flow[:, :, c] for c in channel], axis=-1)
-    # im_flow = 0.5 + im_flow / coef
-    im_flow = np.abs(im_flow)
-    im_flow = np.exp(-im_flow / coef)
-    im_flow = im_flow * thresh
-    # im_flow = 1 - im_flow / 20
-    return im_flow
-
-
-def RenderFlow2(flow, coef=10, channel=(0, 1, 2), thresh=1):
-    # flow = flow[:, :, 64]
-    im_flow = np.stack([flow[:, :, c] for c in channel], axis=-1)
-    # im_flow = 0.5 + im_flow / coef
-    im_flow = np.abs(im_flow)
-    im_flow = np.exp(-im_flow / coef)
-    im_flow = im_flow * thresh
-    # im_flow = 1 - im_flow / 20
-    return im_flow
-
-
 
 if __name__ == '__main__':
     test()
