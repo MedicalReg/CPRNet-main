@@ -18,8 +18,7 @@ A tensorflow implementation of deep-learning-based registration.
   * Tensorflow 1.14.0
 
 # To be done
-
-The paper is under review. More details will be updated. In addition, we are developing a registration toolbox to deploy the liver and brain registration on the web.
+The paper is under review. In addition, we are developing a registration toolbox to deploy the liver and brain registration on the web.
 
 # Acknowledgement
 
